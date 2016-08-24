@@ -305,12 +305,16 @@ class BeamFloatingParserState extends ChartParserState {
     for (Rule rule : parser.grammar.rules) {
       if (!rule.isFloating() || !coarseAllows(rule.lhs, start, end)) continue;
 
+      Set<String> cellsPruned = new HashSet<>();
+
       if (rule.rhs.size() == 1) {
         /* Apply cat unary rules simply */
         String rhsCat = rule.rhs.get(0);
         List<Derivation> derivs = chart[start][end].get(rhsCat);
 
         if (derivs == null) continue;
+
+        pruneCell(cellsPruned, rhsCat, start, end, derivs);
 
         for (Derivation deriv : derivs)
           applyRule(start, end, rule, Collections.singletonList(deriv));
@@ -329,6 +333,9 @@ class BeamFloatingParserState extends ChartParserState {
             copyDerivs(chart[start + 1][end], chart[start][end]);
         }
       }
+
+      for (Map.Entry<String, List<Derivation>> entry : chart[start][end].entrySet())
+        pruneCell(cellsPruned, entry.getKey(), start, end, entry.getValue());
     }
   }
 
