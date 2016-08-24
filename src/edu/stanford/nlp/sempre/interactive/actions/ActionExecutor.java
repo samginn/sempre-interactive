@@ -40,15 +40,22 @@ public class ActionExecutor extends Executor {
     public String FlatWorldType = "BlocksWorld";
   }
   public static Options opts = new Options();
- 
+
   public Response execute(Formula formula, ContextValue context) {
     // We can do beta reduction here since macro substitution preserves the
     // denotation (unlike for lambda DCS).
     FlatWorld world = FlatWorld.fromContext(opts.FlatWorldType, context);
     formula = Formulas.betaReduction(formula);
     try {
-      performActions((ActionFormula)formula, world);
-      return new Response(new StringValue(world.toJSON()));
+      try {
+        LogInfo.logs("ACTION EXECUTOR FORMULA: %s", formula.toString());
+        performActions((ActionFormula)formula, world);
+        return new Response(new StringValue(world.toJSON()));
+      } catch (ClassCastException e) {
+        LogInfo.log("CLASSCASTEXCEPTION REACHED! tried to execute: " + formula.toString());
+        e.printStackTrace();
+        return new Response(ErrorValue.badJava(e.toString()));
+      }
     } catch (Exception e) {
       // Comment this out if we expect lots of innocuous type checking failures
       if (opts.printStackTrace) {
@@ -73,11 +80,11 @@ public class ActionExecutor extends Executor {
     } else if (f.mode == ActionFormula.Mode.repeat) {
       Set<Object> arg = toSet(processSetFormula(f.args.get(0), world));
       if (arg.size() > 1) throw new RuntimeException("repeat has to take a single number");
-      
+
       int times;
       if (!opts.convertNumberValues)
         times = (int)((NumberValue)arg.iterator().next()).value;
-      else 
+      else
         times = (int)arg.iterator().next();
 
       for (int i = 0; i < times; i++)
@@ -92,7 +99,7 @@ public class ActionExecutor extends Executor {
       world.selected = toItemSet(selected);
       performActions((ActionFormula)f.args.get(1), world);
       world.selected = previous;
-      
+
     } else if (f.mode == ActionFormula.Mode.foreach) {
       Set<Object> selected = toSet(processSetFormula(f.args.get(0), world));
       Set<Item> previous = world.selected;
@@ -110,7 +117,7 @@ public class ActionExecutor extends Executor {
       world.allitems.addAll(previous);
     }
   }
-  
+
   private Set<Object> toSet(Object maybeSet) {
     if (maybeSet instanceof Set) return (Set<Object>) maybeSet;
     else return Sets.newHashSet(maybeSet);
@@ -121,7 +128,7 @@ public class ActionExecutor extends Executor {
     }
     return set;
   }
-  
+
   private Set<Item> toItemSet(Set<Object> maybeItems) {
     Set<Item> itemset = maybeItems.stream().map(i -> (Item)i)
         .collect(Collectors.toSet());
@@ -132,7 +139,7 @@ public class ActionExecutor extends Executor {
     static String All = "*";
     static String EmptySet = "nothing";
     static String This = "this"; // current scope if it exists, otherwise the globally marked object
-    static String Selected = "selected"; // 
+    static String Selected = "selected"; //
   };
   // a subset of lambda dcs. no types, and no marks
   // if this gets any more complicated, you should consider the LambdaDCSExecutor
@@ -152,10 +159,10 @@ public class ActionExecutor extends Executor {
           return world.selected();
         if (id.equals(SpecialSets.EmptySet))
           return world.empty();
-      } 
+      }
       return toObject(((ValueFormula<?>) formula).value);
     }
-    
+
     if (formula instanceof JoinFormula) {
       JoinFormula joinFormula = (JoinFormula)formula;
       if (joinFormula.relation instanceof ValueFormula) {
@@ -171,11 +178,11 @@ public class ActionExecutor extends Executor {
         throw new RuntimeException("relation can either be a value, or its reverse");
       }
     }
-    
+
     if (formula instanceof MergeFormula)  {
       MergeFormula mergeFormula = (MergeFormula)formula;
       MergeFormula.Mode mode = mergeFormula.mode;
-      Set<Object> set1 = toSet(processSetFormula(mergeFormula.child1, world)); 
+      Set<Object> set1 = toSet(processSetFormula(mergeFormula.child1, world));
       Set<Object> set2 = toSet(processSetFormula(mergeFormula.child2, world));
       LogInfo.logsForce(set1);
       LogInfo.logsForce(set2);
@@ -185,18 +192,18 @@ public class ActionExecutor extends Executor {
         return Sets.union(set1, set2);
       if (mode == MergeFormula.Mode.and)
         return Sets.intersection(set1, set2);
-      
+
     }
-    
+
     if (formula instanceof NotFormula)  {
       NotFormula notFormula = (NotFormula)formula;
-      Set<Item> set1 = toItemSet(toSet(processSetFormula(notFormula.child, world))); 
+      Set<Item> set1 = toItemSet(toSet(processSetFormula(notFormula.child, world)));
       return Sets.difference(world.allitems, set1);
     }
 
     if (formula instanceof AggregateFormula)  {
       AggregateFormula aggregateFormula = (AggregateFormula)formula;
-      Set<Object> set = toSet(processSetFormula(aggregateFormula.child, world)); 
+      Set<Object> set = toSet(processSetFormula(aggregateFormula.child, world));
       AggregateFormula.Mode mode = aggregateFormula.mode;
       if (mode == AggregateFormula.Mode.count)
         return Sets.newHashSet(set.size());
@@ -205,7 +212,7 @@ public class ActionExecutor extends Executor {
       if (mode == AggregateFormula.Mode.min)
         return Sets.newHashSet(set.stream().max((s,t) -> ((NumberValue)s).value < ((NumberValue)t).value ? 1 : -1));
     }
-    
+
     if (formula instanceof ArithmeticFormula)  {
       ArithmeticFormula arithmeticFormula = (ArithmeticFormula)formula;
       Double arg1 = (Double)processSetFormula(arithmeticFormula.child1, world);
@@ -220,7 +227,7 @@ public class ActionExecutor extends Executor {
       if (mode == ArithmeticFormula.Mode.div)
         return arg1 / arg2;
     }
-    
+
     if (formula instanceof CallFormula)  {
       CallFormula callFormula = (CallFormula)formula;
       @SuppressWarnings("rawtypes")
@@ -273,13 +280,13 @@ public class ActionExecutor extends Executor {
       nameMatches.add(m);
       if (isStatic != Modifier.isStatic(m.getModifiers())) continue;
       int cost = typeCastCost(m.getParameterTypes(), args);
-      
+
       // append optional selected parameter when needed:
       if (cost == INVALID_TYPE_COST && args.length + 1 == m.getParameterCount()) {
         args = ObjectArrays.concat(args, thisObj.current());
         cost = typeCastCost(m.getParameterTypes(), args);
       }
-      
+
       if (cost < bestCost) {
         bestCost = cost;
         bestMethod = m;
@@ -313,7 +320,7 @@ public class ActionExecutor extends Executor {
       if (types[i] != Set.class && args[i].getClass() == Set.class) {
         args[i] = toElement((Set<Object>)args[i]);
       }
-        
+
       cost += typeCastCost(types[i], args[i]);
       if (cost >= INVALID_TYPE_COST) {
         LogInfo.dbgs("NOT COMPATIBLE: want %s, got %s with type %s", types[i], args[i], args[i].getClass());
