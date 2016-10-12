@@ -7,6 +7,7 @@
 
 $: << 'fig/lib'
 require 'execrunner'
+require 'json'
 
 $modes = []
 def addMode(name, description, func)
@@ -1026,6 +1027,29 @@ o('Learner.maxTrainIters', 1),
 
 o('server', true),
 o('Server.numThreads', 8),
+
+o('loadStructs', false),
+lambda { |e|
+  if (e[:loadStructs] == "true") then
+    structs_filename = "./afs/cs.stanford.edu/u/samginn/shrdlurn/structs.json"
+    begin
+      structs_file = File.read(structs_filename)
+      structs_data = JSON.parse(structs_file)
+      s = ""
+      structs_data["structs"].each do |struct|
+        s << "(rule\n"
+        s << "  $OBJECT\n"
+        s << "  (#{struct["name"]})\n"
+        s << "  (ConstantFn (string #{struct["state"].to_s.gsub('"','\"')}))\n"
+        s << "  (induced 1.0)\n"
+        s << ")"
+      end
+      File.write('./shrdlurn_output/grammar/SUBMIT_OBJECTS.grammar.objects', s)
+    rescue
+      puts "No structs file found to be loaded."
+    end
+  end
+},
 nil) })
 
 
